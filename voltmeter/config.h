@@ -3,14 +3,6 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include <Arduino.h>
-#include <avr/sleep.h>
-#include <avr/interrupt.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7735.h>
-
-#include "display.h"
-
 // ===== TFT display pin definitions =====
 #define TFT_CS 10
 #define TFT_RST 9
@@ -25,11 +17,21 @@
 #define PROFILE_0_ref 0x152     // 0V reference for profile switching
 #define PROFILE_1_ref 0x351     // 3.3V reference for profile switching
 
+#include <Arduino.h>
+#include <avr/sleep.h>
+#include <avr/interrupt.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_ST7735.h>
+
 // ===== Buffer definitions =====
+
+// Buffer config
 #define BUFFER_SIZE 8
 #define BUFFER_MASK (BUFFER_SIZE - 1)
-volatile uint8_t buffer[BUFFER_SIZE];
-volatile uint8_t head = 0;
+
+// Extern declarations
+extern volatile uint8_t buffer[BUFFER_SIZE];
+extern volatile uint8_t head;
 
 // ===== ADC configuration structures =====
 struct ADCProfile

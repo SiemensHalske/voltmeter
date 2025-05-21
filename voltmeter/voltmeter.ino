@@ -1,7 +1,7 @@
+#include "display.h"
 #include "config.h"
 
 volatile unsigned long TIME_BASE = 0;
-
 volatile uint8_t buffer[BUFFER_SIZE];
 volatile uint8_t head = 0;
 
