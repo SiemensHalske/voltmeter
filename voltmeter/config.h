@@ -49,16 +49,18 @@ struct ADCConfigSet
 // ===== ADC configuration set =====
 const ADCConfigSet adc_configs = {
     .profiles = {
-        // Profile 0 – Timer1 Match A, AVcc, left-adjusted
+        // Profile 0 – Timer2 Match A, AVcc, left-adjusted, Channel ADC0
         {
-            .admux = (1 << REFS0) | (1 << ADLAR),
+            .admux = (1 << REFS0) | (1 << ADLAR) | (0 << MUX0), // MUX[3:0]=0000 for ADC0
             .adcsra = (1 << ADEN) | (1 << ADIE) | (1 << ADATE) | (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0),
-            .adcsrb = (1 << ADTS1) | (1 << ADTS0)},
-        // Profile 1 – Free Running, 1.1V, right-adjusted
+            .adcsrb = (1 << ADTS1) | (1 << ADTS0) // ADTS[2:0]=011 for Timer2 Compare Match A
+        },
+        // Profile 1 – Timer1 Match A, AVcc, left-adjusted, Channel ADC5
         {
-            .admux = (1 << REFS1) | (1 << REFS0),                                             // 1.1V internal, right adjust
-            .adcsra = (1 << ADEN) | (1 << ADIE) | (1 << ADATE) | (1 << ADPS2) | (1 << ADPS0), // prescaler 32
-            .adcsrb = 0                                                                       // Free running
-        }}};
+            .admux = (1 << REFS0) | (1 << ADLAR) | (1 << MUX2) | (1 << MUX0), // MUX[3:0]=0101 for ADC5
+            .adcsra = (1 << ADEN) | (1 << ADIE) | (1 << ADATE) | (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0),
+            .adcsrb = (1 << ADTS2) // ADTS[2:0]=100 for Timer1 Compare Match A
+        },
+    }};
 
 #endif // CONFIG_H
