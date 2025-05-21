@@ -1,6 +1,14 @@
-#include <Arduino.h>
-#include <avr/sleep.h>
-#include <avr/interrupt.h>
+// src/config.h
+
+#ifndef CONFIG_H
+#define CONFIG_H
+
+#define TFT_CS 10
+#define TFT_RST 9
+#define TFT_DC 8
+#define TFT_BACKLIGHT 7
+
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
 #define BUFFER_SIZE 8
 #define BUFFER_MASK (BUFFER_SIZE - 1)
@@ -17,7 +25,7 @@ struct ADCProfile
 
 struct ADCConfigSet
 {
-    ADCProfile profiles[2]; // expand here if needed
+    ADCProfile profiles[2];
 };
 
 const ADCConfigSet adc_configs = {
@@ -34,46 +42,4 @@ const ADCConfigSet adc_configs = {
             .adcsrb = 0                                                                       // Free running
         }}};
 
-void apply_adc_profile(const ADCConfigSet &config_set, uint8_t profile_id)
-{
-    if (profile_id >= sizeof(config_set.profiles) / sizeof(ADCProfile))
-        return; // sanity check
-
-    const ADCProfile &p = config_set.profiles[profile_id];
-
-    ADMUX = p.admux;
-    ADCSRA = p.adcsra;
-    ADCSRB = p.adcsrb;
-    ADCSRA |= (1 << ADSC);
-}
-
-void setup()
-{
-    pinMode(13, OUTPUT);
-
-    // Timer1 CTC, 10ms
-    TCCR1A = 0;
-    TCCR1B = (1 << WGM12) | (1 << CS11) | (1 << CS10);
-    OCR1A = 2499;
-    TIMSK1 = 0;
-
-    uint8_t selected_profile = 0; // Change to 1 for the second profile
-    apply_adc_profile(adc_configs, selected_profile);
-
-    set_sleep_mode(SLEEP_MODE_ADC);
-    sleep_enable();
-    sei();
-}
-
-ISR(ADC_vect)
-{
-    buffer[head] = ADCH;
-    head = (head + 1) & BUFFER_MASK;
-
-    PINB |= (1 << PINB5);
-}
-
-void loop()
-{
-    sleep_cpu();
-}
+#endif // CONFIG_H
