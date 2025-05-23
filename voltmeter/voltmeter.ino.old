@@ -1,0 +1,172 @@
+#include <Arduino.h>
+#include <avr/interrupt.h>
+#include <avr/sleep.h>
+
+// —— Pin defs ——
+#define OUT_PIN PD2
+#define OUT_DDR DDRD
+#define LED_PIN PB5
+#define LED_DDR DDRB
+
+// —— Config macros ——
+#define BAUD 9600
+#define OVERSAMP 3
+#define ADC_MAX 1023
+#define MIN_FQQ 20
+#define MAX_FQQ 2500
+#define THRESH 10
+#define PRESC_F (2UL * 64)
+#define VREF_MV 5000
+#define HEARTBEAT_INTERVAL 2000
+#define VOLT_DIV_F 1000
+#define DISP_DIV_F 100
+
+// —— EMA state ——
+static uint16_t freqSmoothQ, lastFreqSetQ;
+
+// —— Prototypes ——
+void setup_timer1(uint16_t freqQ);
+uint16_t readAvgADC();
+uint16_t mapFreqQ(uint16_t rawADC);
+void updateFreq(uint16_t rawFreqQ);
+
+// ——— STARTUP ———
+void setup()
+{
+    Serial.begin(BAUD);
+	Serial.write("Started");
+	Serial.write("\n");
+    OUT_DDR |= _BV(OUT_PIN);
+    LED_DDR |= _BV(LED_PIN);
+
+    // ADC: AVcc ref, presc=128, enable + interrupt (no auto-trigger)
+    ADMUX = _BV(REFS0);
+    ADCSRA = _BV(ADEN) | _BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0) | _BV(ADIE);
+    ADCSRB = 0;
+
+    // power savings: disable SPI, TWI, Timer2; turn off analog comparator; kill digital buf on ADC0
+    PRR = _BV(PRSPI) | _BV(PRTWI) | _BV(PRTIM2);
+    ACSR |= _BV(ACD);
+    DIDR0 = _BV(ADC0D);
+
+    // init freq & timer
+    uint16_t a0 = readAvgADC();
+    uint16_t f0 = mapFreqQ(a0);
+    freqSmoothQ = lastFreqSetQ = f0;
+    setup_timer1(f0);
+
+    sei();
+}
+
+// ——— ADC + SLEEP ———
+uint16_t readAvgADC()
+{
+    uint32_t sum = 0;
+    for (uint8_t i = 0; i < (1 << OVERSAMP); i++)
+    {
+        ADCSRA |= _BV(ADIF); // clear any old flag
+        ADCSRA |= _BV(ADSC); // start conversion
+        set_sleep_mode(SLEEP_MODE_ADC);
+        sleep_mode(); // wakes on ADC_vect
+        sum += ADC;   // result is ready
+    }
+    return sum >> OVERSAMP;
+}
+ISR(ADC_vect) { /* just wakes us */ }
+
+// ——— CALC + UPDATE ———
+uint16_t mapFreqQ(uint16_t raw)
+{
+    return uint16_t((uint32_t(raw) * (MAX_FQQ - MIN_FQQ)) / ADC_MAX + MIN_FQQ);
+}
+void updateFreq(uint16_t raw)
+{
+    freqSmoothQ = (raw + 3UL * freqSmoothQ) >> 2;
+    int16_t d = freqSmoothQ - lastFreqSetQ;
+    if ((d < 0 ? -d : d) > THRESH)
+    {
+        lastFreqSetQ = freqSmoothQ;
+        setup_timer1(freqSmoothQ);
+    }
+}
+
+// ——— MAIN LOOP + IDLE ———
+void loop()
+{
+    static uint32_t lastPrint = 0, lastBlink = 0;
+    uint32_t now = millis();
+
+    uint16_t a = readAvgADC();
+    uint16_t r = mapFreqQ(a);
+    updateFreq(r);
+
+    if (now - lastPrint >= 500)
+    {
+        lastPrint = now;
+        uint16_t mV = (uint32_t(a) * VREF_MV) / ADC_MAX;
+        Serial.write('V');
+        Serial.write('=');
+        printUInt(mV / VOLT_DIV_F);
+        Serial.write('.');
+        printThreeDigits(mV % VOLT_DIV_F);
+        Serial.write(' ');
+        Serial.write('F');
+        Serial.write('=');
+        printUInt(lastFreqSetQ / DISP_DIV_F);
+        Serial.write('.');
+        printTwoDigits(lastFreqSetQ % DISP_DIV_F);
+        Serial.write('\n');
+    }
+
+    if (now - lastBlink >= HEARTBEAT_INTERVAL)
+    {
+        lastBlink = now;
+        PINB = _BV(LED_PIN);
+    }
+
+    // idle until next ADC, Timer0 (millis), or Timer1 interrupt
+    set_sleep_mode(SLEEP_MODE_IDLE);
+    sleep_mode();
+}
+
+// ——— TIMER1 SETUP + ISR ———
+void setup_timer1(uint16_t freqQ)
+{
+    uint32_t top = (F_CPU * 100UL) / (PRESC_F * freqQ) - 1UL;
+    noInterrupts();
+    TCCR1A = 0;
+    TCCR1B = _BV(WGM12) | _BV(CS11) | _BV(CS10);
+    OCR1A = top;
+    TIMSK1 |= _BV(OCIE1A);
+    interrupts();
+}
+ISR(TIMER1_COMPA_vect)
+{
+    PIND = _BV(OUT_PIN);
+}
+
+// ——— PRINT HELPERS ———
+void printUInt(uint16_t v)
+{
+    char buf[5];
+    uint8_t l = 0;
+    do
+    {
+        buf[l++] = '0' + (v % 10);
+        v /= 10;
+    } while (v);
+    while (l--)
+        Serial.write(buf[l]);
+}
+void printTwoDigits(uint8_t d)
+{
+    Serial.write('0' + d / 10);
+    Serial.write('0' + d % 10);
+}
+void printThreeDigits(uint16_t d)
+{
+    Serial.write('0' + d / 100);
+    d %= 100;
+    Serial.write('0' + d / 10);
+    Serial.write('0' + d % 10);
+}
